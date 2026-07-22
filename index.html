@@ -782,6 +782,7 @@ let session = null;  // { type, date, exercises:[...], curEx, curSet }
 let restTimer = null, restLeft = 0;
 let currentReps = 8;
 let currentWeight = 0;
+let currentIncline = 0;
 
 function startWorkout() {
   const plan = getPlan();
@@ -829,12 +830,30 @@ function renderActiveEx() {
   const card = document.getElementById('ex-card');
 
   if (ex.type === 'cardio') {
+    currentWeight  = ex.pWeight;
+    currentIncline = ex.incline;
     card.innerHTML = `
       <div class="ex-name">${ex.name}</div>
-      <div class="ex-target">${ex.duration}min · ${ex.pWeight}km/h · ${ex.incline}°</div>
+      <div class="ex-target">${ex.duration} min</div>
       <div style="flex:1;display:flex;align-items:center;justify-content:center;
-                  color:var(--muted);font-size:14px;text-align:center;padding:20px 0;">
-        Faça a esteira e toque "Concluído" quando terminar.
+                  color:var(--muted);font-size:14px;text-align:center;padding:12px 0;">
+        Ajuste e toque "Concluído" ao terminar.
+      </div>
+      <div class="reps-row">
+        <label>Velocidade:</label>
+        <div class="reps-counter">
+          <button onclick="adjSpeed(-0.1)">−</button>
+          <span id="speed-disp">${currentWeight.toFixed(1)}km/h</span>
+          <button onclick="adjSpeed(0.1)">+</button>
+        </div>
+      </div>
+      <div class="reps-row" style="margin-top:10px;">
+        <label>Inclinação:</label>
+        <div class="reps-counter">
+          <button onclick="adjIncline(-0.5)">−</button>
+          <span id="incline-disp">${currentIncline.toFixed(1)}°</span>
+          <button onclick="adjIncline(0.5)">+</button>
+        </div>
       </div>`;
     document.getElementById('set-btn').textContent = '✓ Esteira Concluída';
     return;
@@ -886,16 +905,33 @@ function renderActiveEx() {
 
 function adjReps(d) {
   currentReps = Math.max(1, currentReps + d);
+  if (session) session.exercises[session.curEx].pReps = currentReps;
   const el = document.getElementById('reps-disp');
   if (el) el.textContent = currentReps;
+  saveSession();
 }
 
 function adjWeight(d) {
   currentWeight = Math.max(0, parseFloat((currentWeight + d).toFixed(1)));
-  // Atualiza pWeight do exercício atual para persistir entre séries
   if (session) session.exercises[session.curEx].pWeight = currentWeight;
   const el = document.getElementById('weight-disp');
   if (el) el.textContent = currentWeight + 'kg';
+  saveSession();
+}
+
+function adjSpeed(d) {
+  currentWeight = Math.max(0, parseFloat((currentWeight + d).toFixed(1)));
+  if (session) session.exercises[session.curEx].pWeight = currentWeight;
+  const el = document.getElementById('speed-disp');
+  if (el) el.textContent = currentWeight.toFixed(1) + 'km/h';
+  saveSession();
+}
+
+function adjIncline(d) {
+  currentIncline = Math.max(0, parseFloat((currentIncline + d).toFixed(1)));
+  if (session) session.exercises[session.curEx].incline = currentIncline;
+  const el = document.getElementById('incline-disp');
+  if (el) el.textContent = currentIncline.toFixed(1) + '°';
   saveSession();
 }
 
@@ -904,7 +940,7 @@ function completeSet() {
   const ex = session.exercises[session.curEx];
 
   if (ex.type === 'cardio') {
-    ex.setsLog = [{ duration: ex.duration, speed: ex.pWeight, incline: ex.incline }];
+    ex.setsLog = [{ duration: ex.duration, speed: currentWeight, incline: currentIncline }];
     nextExercise();
     return;
   }
@@ -923,10 +959,11 @@ function completeSet() {
 
 function nextExercise() {
   session.curEx++;
+  saveSession(); // Salva com o índice já atualizado
   if (session.curEx >= session.exercises.length) {
     finishWorkout();
   } else {
-    renderActiveEx();  // Mostra o próximo exercício antes do descanso
+    renderActiveEx();
     startRest(90);
   }
 }
