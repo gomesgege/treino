@@ -416,6 +416,7 @@
     <span class="secs" id="rest-secs">60</span>
     <small>segundos</small>
   </div>
+  <div id="rest-next-label" style="display:none;color:var(--text);font-size:15px;font-weight:600;margin-bottom:16px;text-align:center;max-width:260px;"></div>
   <button class="rest-skip" onclick="skipRest()">Pular descanso →</button>
 </div>
 
@@ -741,11 +742,11 @@ function renderPreWorkout(type, exs) {
 }
 
 function makeBtns(eid, name, sel, lDec, lKeep, lInc, vDec, vKeep, vInc, mode) {
-  const n = JSON.stringify(name);
+  const n = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   return `
-    <button class="prog-btn dec  ${sel==='dec' ?'sel':''}" onclick="pickProg(${n},'dec', ${JSON.stringify(vDec)}, '${mode}', '${eid}')">${lDec}</button>
-    <button class="prog-btn keep ${sel==='keep'?'sel':''}" onclick="pickProg(${n},'keep',${JSON.stringify(vKeep)},'${mode}', '${eid}')">${lKeep}</button>
-    <button class="prog-btn inc  ${sel==='inc' ?'sel':''}" onclick="pickProg(${n},'inc', ${JSON.stringify(vInc)}, '${mode}', '${eid}')">${lInc}</button>`;
+    <button class="prog-btn dec  ${sel==='dec' ?'sel':''}" onclick="pickProg('${n}','dec','${vDec}','${mode}','${eid}')">${lDec}</button>
+    <button class="prog-btn keep ${sel==='keep'?'sel':''}" onclick="pickProg('${n}','keep','${vKeep}','${mode}','${eid}')">${lKeep}</button>
+    <button class="prog-btn inc  ${sel==='inc' ?'sel':''}" onclick="pickProg('${n}','inc','${vInc}','${mode}','${eid}')">${lInc}</button>`;
 }
 
 function pickProg(name, sugg, val, mode, eid) {
@@ -886,6 +887,7 @@ function nextExercise() {
   if (session.curEx >= session.exercises.length) {
     finishWorkout();
   } else {
+    renderActiveEx();  // Mostra o próximo exercício antes do descanso
     startRest(90);
   }
 }
@@ -906,12 +908,22 @@ function startRest(secs) {
   restLeft = secs;
   document.getElementById('rest-overlay').classList.remove('hidden');
   document.getElementById('rest-secs').textContent = restLeft;
+
+  // Para descanso entre exercícios (90s), mostra o próximo no overlay
+  const nextLabel = document.getElementById('rest-next-label');
+  if (nextLabel && session && secs >= 90) {
+    const ex = session.exercises[session.curEx];
+    nextLabel.textContent = ex ? `Próximo: ${ex.name}` : '';
+    nextLabel.style.display = 'block';
+  } else if (nextLabel) {
+    nextLabel.style.display = 'none';
+  }
+
   restTimer = setInterval(() => {
     restLeft--;
     document.getElementById('rest-secs').textContent = restLeft;
     if (restLeft <= 0) {
       skipRest();
-      if (session) renderActiveEx();
     }
   }, 1000);
 }
@@ -919,6 +931,8 @@ function startRest(secs) {
 function skipRest() {
   clearInterval(restTimer);
   document.getElementById('rest-overlay').classList.add('hidden');
+  // Garante que o card do exercício atual está sempre correto
+  if (session) renderActiveEx();
 }
 
 function finishWorkout() {
