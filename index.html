@@ -430,8 +430,16 @@
 const LS = {
   plan:    'wt_plan',
   history: 'wt_history',
-  state:   'wt_state'
+  state:   'wt_state',
+  session: 'wt_session'
 };
+function saveSession() {
+  if (session) localStorage.setItem(LS.session, JSON.stringify(session));
+  else localStorage.removeItem(LS.session);
+}
+function loadSession() {
+  return JSON.parse(localStorage.getItem(LS.session) || 'null');
+}
 const getPlan    = () => JSON.parse(localStorage.getItem(LS.plan)    || 'null');
 const getHistory = () => JSON.parse(localStorage.getItem(LS.history) || '{}');
 const getState   = () => JSON.parse(localStorage.getItem(LS.state)   || '{}');
@@ -540,9 +548,14 @@ function renderTodayAction() {
     return;
   }
   if (rec && !rec.completed) {
+    const saved = loadSession();
+    const onclick = saved ? 'continueWorkout()' : 'goPreWorkout()';
+    const label = saved
+      ? `▶ Continuar treino — ${typeLabel(rec.type)}`
+      : `⚙️ Reconfigurar treino — ${typeLabel(rec.type)}`;
     wrap.innerHTML = `
-      <button class="today-action" onclick="goPreWorkout()">
-        <span>▶ Continuar treino — ${typeLabel(rec.type)}</span><span class="arrow">›</span>
+      <button class="today-action" onclick="${onclick}">
+        <span>${label}</span><span class="arrow">›</span>
       </button>`;
     return;
   }
@@ -768,6 +781,7 @@ function pickProg(name, sugg, val, mode, eid) {
 let session = null;  // { type, date, exercises:[...], curEx, curSet }
 let restTimer = null, restLeft = 0;
 let currentReps = 8;
+let currentWeight = 0;
 
 function startWorkout() {
   const plan = getPlan();
@@ -794,6 +808,7 @@ function startWorkout() {
   hist[today] = { type, completed: false, startedAt: new Date().toISOString() };
   saveHistory(hist);
 
+  saveSession();
   showScreen('active-workout');
   renderActiveEx();
 }
@@ -825,7 +840,8 @@ function renderActiveEx() {
     return;
   }
 
-  currentReps = ex.pReps;
+  currentReps   = ex.pReps;
+  currentWeight = ex.pWeight;
 
   const circles = Array.from({length: ex.pSets}, (_,i) => {
     const done = i < ex.setsLog.length;
@@ -839,6 +855,17 @@ function renderActiveEx() {
     : ex.type === 'bodyweight' ? 'Peso corporal'
     : `${ex.pWeight}kg`;
 
+  const inc = parseFloat(ex.increment || 2.5);
+  const weightRow = ex.type !== 'bodyweight' ? `
+    <div class="reps-row" style="margin-top:10px;">
+      <label>${ex.isAuxilio ? 'Auxílio:' : 'Carga:'}</label>
+      <div class="reps-counter">
+        <button onclick="adjWeight(-${inc})">−</button>
+        <span id="weight-disp">${currentWeight}kg</span>
+        <button onclick="adjWeight(${inc})">+</button>
+      </div>
+    </div>` : '';
+
   card.innerHTML = `
     <div class="ex-name">${ex.name}</div>
     <div class="ex-target">${ex.pSets} séries × ${ex.pReps} reps · ${wtLabel}</div>
@@ -850,7 +877,8 @@ function renderActiveEx() {
         <span id="reps-disp">${currentReps}</span>
         <button onclick="adjReps(1)">+</button>
       </div>
-    </div>`;
+    </div>
+    ${weightRow}`;
 
   const done = ex.setsLog.length;
   document.getElementById('set-btn').textContent = `✓ Série ${done+1} de ${ex.pSets} Concluída`;
@@ -860,6 +888,15 @@ function adjReps(d) {
   currentReps = Math.max(1, currentReps + d);
   const el = document.getElementById('reps-disp');
   if (el) el.textContent = currentReps;
+}
+
+function adjWeight(d) {
+  currentWeight = Math.max(0, parseFloat((currentWeight + d).toFixed(1)));
+  // Atualiza pWeight do exercício atual para persistir entre séries
+  if (session) session.exercises[session.curEx].pWeight = currentWeight;
+  const el = document.getElementById('weight-disp');
+  if (el) el.textContent = currentWeight + 'kg';
+  saveSession();
 }
 
 function completeSet() {
@@ -872,7 +909,9 @@ function completeSet() {
     return;
   }
 
-  ex.setsLog.push({ reps: currentReps, weight: ex.pWeight });
+  ex.setsLog.push({ reps: currentReps, weight: currentWeight });
+
+  saveSession();
 
   if (ex.setsLog.length >= ex.pSets) {
     nextExercise();
@@ -892,6 +931,17 @@ function nextExercise() {
   }
 }
 
+function continueWorkout() {
+  const saved = loadSession();
+  if (saved) {
+    session = saved;
+    showScreen('active-workout');
+    renderActiveEx();
+  } else {
+    goPreWorkout();
+  }
+}
+
 function skipExercise() {
   if (!session) return;
   if (confirm('Pular este exercício?')) nextExercise();
@@ -899,7 +949,10 @@ function skipExercise() {
 
 function confirmAbort() {
   if (confirm('Abandonar o treino de hoje?')) {
-    session = null; skipRest(); showCalendar();
+    session = null;
+    localStorage.removeItem(LS.session);
+    skipRest();
+    showCalendar();
   }
 }
 
@@ -957,8 +1010,8 @@ function finishWorkout() {
   s.lastType = session.type;
   saveState(s);
 
-  const finishedType = session.type;
   session = null;
+  localStorage.removeItem(LS.session);
   skipRest();
   showDayDetail(today);
 }
